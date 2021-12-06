@@ -192,7 +192,7 @@ Material:
     - _UnderwaterSurfaceSmoothness: 0.8
     - _WaveCount: 5
     - _WaveDistance: 0.959
-    - _WaveHeight: 1.46
+    - _WaveHeight: 2.57
     - _WaveNormalStr: 6
     - _WaveSpeed: 1.5
     - _WaveSteepness: 1
@@ -220,7 +220,7 @@ Material:
     - _WaterColor: {r: 0.21176466, g: 0.6745098, b: 1, a: 1}
     - _WaterShallowColor: {r: 0, g: 0.9394503, b: 1, a: 1}
     - _WaveDirection: {r: 1, g: 1, b: 1, a: 1}
-    - _WaveFadeDistance: {r: 76.392815, g: 303.86386, b: 0, a: 0}
+    - _WaveFadeDistance: {r: 0, g: 227.4711, b: 0, a: 0}
   m_BuildTextureStacks: []
 --- !u!114 &6498140463000427223
 MonoBehaviour:
