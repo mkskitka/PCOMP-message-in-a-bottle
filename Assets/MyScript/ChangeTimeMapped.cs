@@ -53,7 +53,8 @@ public class ChangeTimeMapped : MonoBehaviour
     private Queue outputQueue;    // From Unity to Arduino
     private Queue inputQueue;    // From Arduino to Unity
     private int baudRate = 9600;
-    private string portName = "COM4";
+    // WINDOWS change to COM4 
+    private string portName = "/dev/tty.usbmodem14201";
     private int timeout = 100;
     private bool loop = true;
 
@@ -125,6 +126,13 @@ public class ChangeTimeMapped : MonoBehaviour
     {
          StartThread();
         CurrentPreset = CLEAR_SKY;
+        // Get a list of serial port names
+        string[] ports = SerialPort.GetPortNames();
+ 
+        // Display each port name to the console
+        foreach (string port in ports) {
+            Debug.Log(port);
+        }
 
     }
 
@@ -227,7 +235,7 @@ public class ChangeTimeMapped : MonoBehaviour
             else if(numberPastThreshold == 0) {
                 EnviroSkyMgr.instance.ChangeWeather(ClearSkyPreset);
             }
-            Debug.Log("Reseting. " + windowIncrement.ToString() + ", numberPastTH: " + numberPastThreshold.ToString());
+            //Debug.Log("Reseting. " + windowIncrement.ToString() + ", numberPastTH: " + numberPastThreshold.ToString());
             numberPastThreshold = 0; 
         }
         if(currentAcceleration > previousAcceleration)
