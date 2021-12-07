@@ -38,7 +38,6 @@ public class ChangeTimeMapped : MonoBehaviour
     EnviroWeatherPreset HeavyRainPreset;
     private string CLEAR_SKY = "Clear Sky";
     private string HEAVY_RAIN = "Heavy Rain";
-    //EnviroWeatherPreset CurrentPreset;
     private string CurrentPreset;
     private int numberPastThreshold = 0;
     private float timeFrame = 5;
@@ -48,128 +47,163 @@ public class ChangeTimeMapped : MonoBehaviour
     private float maxAcceleration = 0;
     private float Threshold = 50;
 
-    public string portName;
-    private SerialPort arduino;
+    
+    private SerialPort stream;
     private Thread thread;
     private Queue outputQueue;    // From Unity to Arduino
     private Queue inputQueue;    // From Arduino to Unity
+    private int baudRate = 9600;
+    private string portName = "COM4";
+    private int timeout = 100;
+    private bool loop = true;
 
-    public void StartThread()
+    void OnApplicationQuit()
+    {
+        loop = false; 
+        Debug.Log("Application ending after " + Time.time + " seconds");
+
+    }
+
+    void StartThread()
     {
         outputQueue = Queue.Synchronized(new Queue());
         inputQueue = Queue.Synchronized(new Queue());
         // Creates and starts the thread
         thread = new Thread(ThreadLoop);
         thread.Start();
-    
+    }
 
-    public void ThreadLoop()
+    void ThreadLoop()
     {
-        // Opens the connection on the serial port
-        stream = new SerialPort(port, baudRate)
-       stream.ReadTimeout = 50;
+            // Opens the connection on the serial port
+        stream = new SerialPort(portName, baudRate);
+        stream.ReadTimeout = timeout;
         stream.Open();
+        if (stream.IsOpen)
+        {
+            Debug.Log("Serial Port Open.");
+        }
 
         // Looping
-        while (true)
+        while (loop)
         {
             // Send to Arduino
             if (outputQueue.Count != 0)
             {
-                string command = outputQueue.Dequeue();
-                SendToArduino(command);
+                string command = outputQueue.Dequeue().ToString();
+                SendDataToSerialPort(command);
             }
 
             // Read from Arduino
-            string result = ReadFromArduino(timeout);
+            string result = ReadFromSerialPort(timeout);
             if (result != null)
                 inputQueue.Enqueue(result);
         }
     }
 
-    public void SendToArduino(string command)
+
+/*
+ *  For external use by the MonoScript
+ */
+    void SendToArduino(string command)
     {
         outputQueue.Enqueue(command);
+
     }
 
-    public string ReadFromArduino()
+    string ReadFromArduino()
     {
         if (inputQueue.Count == 0)
+        {
             return null;
+        }
 
         return (string)inputQueue.Dequeue();
     }
 
     void Start()
     {
-        arduino = new SerialPort("COM4", 9600);
-        if(!arduino.IsOpen) {
-            Debug.Log("Opening Serial Port.");
-            arduino.Open();
-        }
-        if (arduino.IsOpen)
-        {
-            Debug.Log("Serial Port Open.");
-            arduino.Handshake = Handshake.None;
-            arduino.ReadTimeout = 5000;
-            StartCoroutine(ReadDataFromSerialPort());
-            CurrentPreset = CLEAR_SKY;
-        }
+         StartThread();
+        CurrentPreset = CLEAR_SKY;
 
     }
 
-    IEnumerator ReadDataFromSerialPort()
-    //only read when seri is avalible and same thing on arduino
+    void SendDataToSerialPort(string command)
     {
-
-            float rawZInput;
-            while (true)
-            {
-
-                string[] values = arduino.ReadLine().Split(',');
-                if (values.Length >= 5)
-                {
-                    xInput = float.Parse(values[0]);
-                    yInput = float.Parse(values[1]);
-                    float z = float.Parse(values[2]);
-                    float AccX = Mathf.Abs(float.Parse(values[3]));
-                    float AccZ = Mathf.Abs(float.Parse(values[4]));
-                    currentAcceleration = AccX + AccZ;
-                    Debug.Log("current Acceleration: " + currentAcceleration.ToString());
-
-                    if (firstZInput == -1 && z != 0)
-                    {
-                        firstZInput = z;
-                    }
-                    rawZInput = z;
-                    //Debug.Log("firstZ: " + firstZInput.ToString() + ", LatestZ: " + rawZInput.ToString());
-                    zInput = initialYDegrees + (firstZInput - rawZInput);
-                }
-                else
-                {
-
-                }
-            //zInput = initialYDegrees;
-            yield return new WaitForSeconds(.05f);
-
-        }
-        
-
-
-    }
-
-    void SendDataToSerialPort()
-    {
-        if (arduino.IsOpen)
+        if (stream.IsOpen)
         {
             //Debug.Log("Sending Data to Serial Port.");
-             arduino.Write("1");
+            byte[] bites = System.Text.Encoding.UTF8.GetBytes(command);
+            stream.Write(bites, 0, 1);
+
+
         }
     }
+
+    string ReadFromSerialPort(int timeout)
+    //only read when seri is avalible and same thing on arduino
+    {
+        try {
+            string input = stream.ReadLine();
+            return input;
+        }
+        catch(TimeoutException e)
+        {
+            //Debug.Log("Error: " + e);
+            stream.BaseStream.Flush();
+            return null;
+        }
+    }
+
+    void parseInput(string input)
+    {
+        try
+        {
+            if (input == null)
+            {
+                return;
+            }
+            string[] values = input.Split(',');
+            float rawZInput;
+            if (values.Length >= 5)
+            {
+                xInput = float.Parse(values[0]);
+                yInput = float.Parse(values[1]);
+                float z = float.Parse(values[2]);
+                float AccX = Mathf.Abs(float.Parse(values[3]));
+                float AccZ = Mathf.Abs(float.Parse(values[4]));
+                currentAcceleration = AccX + AccZ;
+                //Debug.Log("xInput " + currentAcceleration.ToString());
+                //Debug.Log("current Acceleration: " + currentAcceleration.ToString());
+
+                if (firstZInput == -1 && z != 0)
+                {
+                    firstZInput = z;
+                }
+                rawZInput = z;
+                //Debug.Log("firstZ: " + firstZInput.ToString() + ", LatestZ: " + rawZInput.ToString());
+                zInput = initialYDegrees + (firstZInput - rawZInput);
+            }
+            else
+            {
+                Debug.Log("Less than 5 values read into Unity");
+            }
+        }
+        catch(Exception e)
+        {
+            Debug.Log("Input: " + input);
+        }
+    }
+
+
 
     // Update is called once per frame
     void Update()
     {
+        string input = ReadFromArduino();
+        parseInput(input);
+        SendToArduino("ready");
+
         var currentWindow = Mathf.Floor(Time.realtimeSinceStartup / timeFrame);
         //Debug.Log("current window: " + currentWindow.ToString() + " : " + windowIncrement.ToString());
        // Debug.Log(Time.realtimeSinceStartup.ToString());
@@ -288,6 +322,6 @@ public class ChangeTimeMapped : MonoBehaviour
         }*/
 
         // Debug.Log("Value: " + value);
-        SendDataToSerialPort();
+        //SendDataToSerialPort();
     }
 }
