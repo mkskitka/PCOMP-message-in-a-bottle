@@ -5,6 +5,11 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using System.IO.Ports;
+using System;
+using UnityEngine;
+using System.Threading;
+
+
 
 //create a map function for C#
 public static class ExtensionMethods
@@ -18,9 +23,9 @@ public static class ExtensionMethods
 public class ChangeTimeMapped : MonoBehaviour
 {
     
-    public static float xInput;
-    public static float yInput;
-    public static float zInput;
+    public static float xInput =0;
+    public static float yInput =0;
+    public static float zInput=0;
     private static float firstZInput = -1;
     private static float initialYDegrees = 174;
     private static float RawMinute = 0;
@@ -34,60 +39,197 @@ public class ChangeTimeMapped : MonoBehaviour
     private string CLEAR_SKY = "Clear Sky";
     private string HEAVY_RAIN = "Heavy Rain";
     //EnviroWeatherPreset CurrentPreset;
-    private string CurrentPreset; 
-   
+    private string CurrentPreset;
+    private int numberPastThreshold = 0;
+    private float timeFrame = 5;
+    private int windowIncrement = 0;
+    private float previousAcceleration = 0;
+    private float currentAcceleration = 0;
+    private float maxAcceleration = 0;
+    private float Threshold = 50;
 
+    public string portName;
+    private SerialPort arduino;
+    private Thread thread;
+    private Queue outputQueue;    // From Unity to Arduino
+    private Queue inputQueue;    // From Arduino to Unity
 
-    SerialPort sp = new SerialPort("COM4", 9600);
+    public void StartThread()
+    {
+        outputQueue = Queue.Synchronized(new Queue());
+        inputQueue = Queue.Synchronized(new Queue());
+        // Creates and starts the thread
+        thread = new Thread(ThreadLoop);
+        thread.Start();
+    
+
+    public void ThreadLoop()
+    {
+        // Opens the connection on the serial port
+        stream = new SerialPort(port, baudRate)
+       stream.ReadTimeout = 50;
+        stream.Open();
+
+        // Looping
+        while (true)
+        {
+            // Send to Arduino
+            if (outputQueue.Count != 0)
+            {
+                string command = outputQueue.Dequeue();
+                SendToArduino(command);
+            }
+
+            // Read from Arduino
+            string result = ReadFromArduino(timeout);
+            if (result != null)
+                inputQueue.Enqueue(result);
+        }
+    }
+
+    public void SendToArduino(string command)
+    {
+        outputQueue.Enqueue(command);
+    }
+
+    public string ReadFromArduino()
+    {
+        if (inputQueue.Count == 0)
+            return null;
+
+        return (string)inputQueue.Dequeue();
+    }
 
     void Start()
     {
-        sp.Open();
-        StartCoroutine(ReadDataFromSerialPort());
-        CurrentPreset = CLEAR_SKY;
-
-
+        arduino = new SerialPort("COM4", 9600);
+        if(!arduino.IsOpen) {
+            Debug.Log("Opening Serial Port.");
+            arduino.Open();
+        }
+        if (arduino.IsOpen)
+        {
+            Debug.Log("Serial Port Open.");
+            arduino.Handshake = Handshake.None;
+            arduino.ReadTimeout = 5000;
+            StartCoroutine(ReadDataFromSerialPort());
+            CurrentPreset = CLEAR_SKY;
+        }
 
     }
 
     IEnumerator ReadDataFromSerialPort()
     //only read when seri is avalible and same thing on arduino
     {
-        float rawZInput;
-        while (true)
-        {
-            string[] values = sp.ReadLine().Split(',');
-            xInput = float.Parse(values[0]);
-            yInput = float.Parse(values[1]);
-            float z = float.Parse(values[2]);
-            if (firstZInput == -1 && z !=0)
+
+            float rawZInput;
+            while (true)
             {
-                firstZInput = z;  
-            }
-            rawZInput = z;
-            //Debug.Log("firstZ: " + firstZInput.ToString() + ", LatestZ: " + rawZInput.ToString());
-            zInput = initialYDegrees + ( firstZInput - rawZInput );
+
+                string[] values = arduino.ReadLine().Split(',');
+                if (values.Length >= 5)
+                {
+                    xInput = float.Parse(values[0]);
+                    yInput = float.Parse(values[1]);
+                    float z = float.Parse(values[2]);
+                    float AccX = Mathf.Abs(float.Parse(values[3]));
+                    float AccZ = Mathf.Abs(float.Parse(values[4]));
+                    currentAcceleration = AccX + AccZ;
+                    Debug.Log("current Acceleration: " + currentAcceleration.ToString());
+
+                    if (firstZInput == -1 && z != 0)
+                    {
+                        firstZInput = z;
+                    }
+                    rawZInput = z;
+                    //Debug.Log("firstZ: " + firstZInput.ToString() + ", LatestZ: " + rawZInput.ToString());
+                    zInput = initialYDegrees + (firstZInput - rawZInput);
+                }
+                else
+                {
+
+                }
             //zInput = initialYDegrees;
             yield return new WaitForSeconds(.05f);
+
         }
+        
 
 
+    }
+
+    void SendDataToSerialPort()
+    {
+        if (arduino.IsOpen)
+        {
+            //Debug.Log("Sending Data to Serial Port.");
+             arduino.Write("1");
+        }
     }
 
     // Update is called once per frame
     void Update()
     {
+        var currentWindow = Mathf.Floor(Time.realtimeSinceStartup / timeFrame);
+        //Debug.Log("current window: " + currentWindow.ToString() + " : " + windowIncrement.ToString());
+       // Debug.Log(Time.realtimeSinceStartup.ToString());
+            
+        if(currentWindow > windowIncrement)
+        {
+            windowIncrement += 1;
+            // use Number past Threshold to change the weather and wave height. 
+            if(numberPastThreshold > 4)
+            {
+                EnviroSkyMgr.instance.ChangeWeather(HeavyRainPreset);
+            }
+            else if(numberPastThreshold > 3 && numberPastThreshold <= 4) {
+                //Cloudy or something
+                EnviroSkyMgr.instance.ChangeWeather(HeavyRainPreset);
+            }
+            else if(numberPastThreshold <=3 && numberPastThreshold > 0) {
+                EnviroSkyMgr.instance.ChangeWeather(HeavyRainPreset);
+                //something else
+            }
+            else if(numberPastThreshold == 0) {
+                EnviroSkyMgr.instance.ChangeWeather(ClearSkyPreset);
+            }
+            Debug.Log("Reseting. " + windowIncrement.ToString() + ", numberPastTH: " + numberPastThreshold.ToString());
+            numberPastThreshold = 0; 
+        }
+        if(currentAcceleration > previousAcceleration)
+        {
+            maxAcceleration = currentAcceleration;
+        }
+        else
+        {
+            if(maxAcceleration != 0)
+            {
+                if (maxAcceleration > Threshold)
+                {
+                    //Debug.Log("Past Threshold: " + numberPastThreshold.ToString());
+                    numberPastThreshold += 1;
+                }
+            }
+            else
+            {
+                maxAcceleration = 0; 
+            }
+
+        }
+        previousAcceleration = currentAcceleration;
 
         //presets = EnviroSkyMgr.instance.Weather.weatherPresets;
         //Debug.Log("Presets Count: " + presets.Count.ToString());
         //get input value from Arduino
-        //string value = sp.ReadLine();
+        //string value = arduino.ReadLine();
         //Input = float.Parse(value);
 
         //map the input from -180 to 180 to 0-24
         //Debug.Log("yInput: " + yInput.ToString());
         presets = EnviroSkyMgr.instance.Weather.weatherPresets;
         //Debug.Log("Presets Count: " + presets.Count.ToString());
+
+        
         
         
         if (presets.Count > 0 && ClearSkyPreset == null)
@@ -120,15 +262,15 @@ public class ChangeTimeMapped : MonoBehaviour
         //MyMinute = Mathf.RoundToInt(RawMinute);
 
         //need integer to set time
-        EnviroSkyMgr.instance.SetTime(EnviroSkyMgr.instance.Time.Years,
+        /*EnviroSkyMgr.instance.SetTime(EnviroSkyMgr.instance.Time.Years,
                                       EnviroSkyMgr.instance.Time.Days,
                                       hours,
                                       minutes,
-                                      EnviroSkyMgr.instance.Time.Seconds);
+                                      EnviroSkyMgr.instance.Time.Seconds);*/
 
         // Update Weather ... Clear Sky, Heavy Rain 
         //CurrentPreset = EnviroSkyMgr.instance.Weather.currentActiveWeatherPreset;
-        if (presets.Count != 0)
+        /*if (presets.Count != 0)
         {
 
             if (yInput < 0 && CurrentPreset != CLEAR_SKY)
@@ -143,9 +285,9 @@ public class ChangeTimeMapped : MonoBehaviour
                 EnviroSkyMgr.instance.ChangeWeather(HeavyRainPreset);
                 CurrentPreset = HEAVY_RAIN;
             }
-        }
+        }*/
 
         // Debug.Log("Value: " + value);
-
+        SendDataToSerialPort();
     }
 }
