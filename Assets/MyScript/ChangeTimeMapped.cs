@@ -8,7 +8,8 @@ using System.IO.Ports;
 using System;
 using UnityEngine;
 using System.Threading;
-
+[RequireComponent(typeof(FlipBottle))]
+[RequireComponent(typeof(CameraPan))]
 
 
 //create a map function for C#
@@ -22,6 +23,9 @@ public static class ExtensionMethods
 
 public class ChangeTimeMapped : MonoBehaviour
 {
+    public FlipBottle bottle; 
+    public CameraPan camera; 
+
     
     // Inputs from Arduino
     public static float xInput =0;
@@ -78,12 +82,18 @@ public class ChangeTimeMapped : MonoBehaviour
     private int timeout = 100;
     private bool loop = true;
 
+    private bool flippingBottle = false; 
+    private bool flippingCamera = false; 
+    private bool inUpsidedown = false; 
+
     void Start()
     {
          StartThread();
         CurrentPreset = CLEAR_SKY;
         // Get a list of serial port names
         string[] ports = SerialPort.GetPortNames();
+        bottle = GameObject.FindGameObjectWithTag("TagBottle").GetComponent<FlipBottle>();
+        camera = GameObject.FindGameObjectWithTag("MainCamera").GetComponent<CameraPan>();
  
         // Display each port name to the console
         // foreach (string port in ports) {
@@ -125,13 +135,51 @@ public class ChangeTimeMapped : MonoBehaviour
             numberPastThresholdPitch = 0;  
             numberPastThresholdRow = 0;     
         }
+        if(flippingBottle) {
+            flippingBottle = bottle.Flip(!inUpsidedown);  
+            if(!flippingBottle && !flippingCamera) {
+                inUpsidedown = !inUpsidedown;
+                if(!inUpsidedown) {
+                    bottle.PlayAnimation(); 
+                    camera.PlayAnimation();
+                }
+                flippingBottle = false;
+            }
+        }
+        if(flippingCamera) {
+            flippingCamera = camera.Flip(!inUpsidedown);
+            if(!flippingCamera && !flippingBottle) {
+                inUpsidedown = !inUpsidedown;
+                if(!inUpsidedown) {
+                    bottle.PlayAnimation(); 
+                    camera.PlayAnimation();
+                }
+                flippingCamera = false;
+            }  
+        }
     }
 
     void checkForRocking() {
-        if(numberPastThresholdPitch > rockingPitchThreshold && numberPastThresholdRow < rockingPitchThreshold) {
+        if(numberPastThresholdPitch > rockingPitchThreshold 
+            && numberPastThresholdRow < rockingPitchThreshold 
+            && !flippingBottle 
+            && !flippingCamera) {
+
+            bottle.StopAnimation();
+            camera.StopAnimation();
+            flippingBottle = true; 
+            flippingCamera = true;
             Debug.Log("Bottle Rocking: Pitch");
         }
-        if(numberPastThresholdRow > rockingPitchThreshold && numberPastThresholdPitch < rockingPitchThreshold) {
+        if(numberPastThresholdRow > rockingPitchThreshold 
+            && numberPastThresholdPitch < rockingPitchThreshold
+            && !flippingBottle 
+            && !flippingCamera) {
+
+            bottle.StopAnimation();
+            camera.StopAnimation();
+            flippingBottle = true; 
+            flippingCamera = true;
             Debug.Log("Bottle Rocking: Row");
         }
     }
@@ -290,7 +338,7 @@ public class ChangeTimeMapped : MonoBehaviour
         {
             for (int i = 0; i < presets.Count; i++)
             {
-                Debug.Log("name: " + presets[i].Name);
+                //Debug.Log("name: " + presets[i].Name);
 
                 if (presets[i].Name == CLEAR_SKY)
                 {
