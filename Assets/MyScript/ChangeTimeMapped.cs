@@ -26,9 +26,13 @@ public class ChangeTimeMapped : MonoBehaviour
     public static float xInput =0;
     public static float yInput =0;
     public static float zInput=0;
+    public static float AccX = 0; 
+    public static float AccY = 0; 
+    public static float AccZ = 0; 
+
     private static float firstZInput = -1;
     private static float initialYDegrees = 174;
-    private static float RawMinute = 0;
+    private static float RawMinutes = 0;
 
     private float RawHour;
     private int MyHour;
@@ -46,6 +50,7 @@ public class ChangeTimeMapped : MonoBehaviour
     private float currentAcceleration = 0;
     private float maxAcceleration = 0;
     private float Threshold = 50;
+    private float maxHeadingAcc = 0;
 
     
     private SerialPort stream;
@@ -54,7 +59,7 @@ public class ChangeTimeMapped : MonoBehaviour
     private Queue inputQueue;    // From Arduino to Unity
     private int baudRate = 9600;
     // WINDOWS change to COM4 
-    private string portName = "/dev/tty.usbmodem14201";
+    private string portName = "/dev/tty.usbmodem14101";
     private int timeout = 100;
     private bool loop = true;
 
@@ -173,14 +178,16 @@ public class ChangeTimeMapped : MonoBehaviour
             }
             string[] values = input.Split(',');
             float rawZInput;
-            if (values.Length >= 5)
+            if (values.Length >= 6)
             {
                 xInput = float.Parse(values[0]);
                 yInput = float.Parse(values[1]);
                 float z = float.Parse(values[2]);
-                float AccX = Mathf.Abs(float.Parse(values[3]));
-                float AccZ = Mathf.Abs(float.Parse(values[4]));
+                AccX = Mathf.Abs(float.Parse(values[3]));
+                AccZ = Mathf.Abs(float.Parse(values[4]));
+                AccY = Mathf.Abs(float.Parse(values[5]));
                 currentAcceleration = AccX + AccZ;
+                //Debug.Log("Y Acc: " + AccY.ToString());
                 //Debug.Log("xInput " + currentAcceleration.ToString());
                 //Debug.Log("current Acceleration: " + currentAcceleration.ToString());
 
@@ -203,6 +210,50 @@ public class ChangeTimeMapped : MonoBehaviour
         }
     }
 
+    void changeTime(float yAcc, float yInput) 
+    {
+        bool positive;
+        if(yAcc >= 0) {
+            positive = true;
+        }
+        else {
+            positive = false; 
+        }
+        float yAccAbs = Mathf.Abs(yAcc);
+        if(yAccAbs > maxHeadingAcc) {
+            maxHeadingAcc = yAccAbs; 
+        }
+        int timeAccInMin = Mathf.RoundToInt(maxHeadingAcc.Map(0, 600, 0, 10));
+
+        //float RawHour = xInput.Map(-180, 180, 0, 24);
+        //map the hour input to 1440 minutes in a day
+        //RawMinute = RawHour.Map(0, 24, 0, 1440);
+        if(positive) {
+            RawMinutes = (EnviroSkyMgr.instance.Time.Hours * 60) + EnviroSkyMgr.instance.Time.Minutes + timeAccInMin;
+        }
+        else {
+            RawMinutes = (EnviroSkyMgr.instance.Time.Hours * 60) + EnviroSkyMgr.instance.Time.Minutes - timeAccInMin;
+        }
+        if(RawMinutes >= 1440) {
+            RawMinutes = RawMinutes - 1440;
+        }
+        if(RawMinutes < 0) {
+            RawMinutes = 1440 - RawMinutes;
+        }
+        int hours = Mathf.RoundToInt(Mathf.Floor(RawMinutes / 60));
+        int minutes = Mathf.RoundToInt(RawMinutes) - (hours * 60);
+
+        //need integer to set time
+        EnviroSkyMgr.instance.SetTime(EnviroSkyMgr.instance.Time.Years,
+                                      EnviroSkyMgr.instance.Time.Days,
+                                      hours,
+                                      minutes,
+                                      EnviroSkyMgr.instance.Time.Seconds);
+        if(maxHeadingAcc > 1) {                             
+            maxHeadingAcc = maxHeadingAcc - (maxHeadingAcc  / 20);
+        }
+    }
+
 
 
     // Update is called once per frame
@@ -211,6 +262,7 @@ public class ChangeTimeMapped : MonoBehaviour
         string input = ReadFromArduino();
         parseInput(input);
         SendToArduino("ready");
+        changeTime(AccY, yInput);
 
         var currentWindow = Mathf.Floor(Time.realtimeSinceStartup / timeFrame);
         //Debug.Log("current window: " + currentWindow.ToString() + " : " + windowIncrement.ToString());
@@ -290,25 +342,7 @@ public class ChangeTimeMapped : MonoBehaviour
                 }
             }
         }
-        float RawHour = xInput.Map(-180, 180, 0, 24);
 
-
-        //map the hour input to 1440 minutes in a day
-        RawMinute = RawHour.Map(0, 24, 0, 1440);
-        //RawMinute = RawMinute + 1; 
-        int hours = Mathf.RoundToInt(Mathf.Floor(RawMinute / 60));
-        int minutes = Mathf.RoundToInt(RawMinute) - (hours * 60);
-
-        //round the float input value to integer
-        //MyHour = Mathf.RoundToInt(RawHour);
-        //MyMinute = Mathf.RoundToInt(RawMinute);
-
-        //need integer to set time
-        /*EnviroSkyMgr.instance.SetTime(EnviroSkyMgr.instance.Time.Years,
-                                      EnviroSkyMgr.instance.Time.Days,
-                                      hours,
-                                      minutes,
-                                      EnviroSkyMgr.instance.Time.Seconds);*/
 
         // Update Weather ... Clear Sky, Heavy Rain 
         //CurrentPreset = EnviroSkyMgr.instance.Weather.currentActiveWeatherPreset;
