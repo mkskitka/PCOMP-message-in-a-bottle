@@ -23,6 +23,7 @@ public static class ExtensionMethods
 public class ChangeTimeMapped : MonoBehaviour
 {
     
+    // Inputs from Arduino
     public static float xInput =0;
     public static float yInput =0;
     public static float zInput=0;
@@ -34,35 +35,134 @@ public class ChangeTimeMapped : MonoBehaviour
     private static float initialYDegrees = 174;
     private static float RawMinutes = 0;
 
-    private float RawHour;
-    private int MyHour;
-    private int MyMinute;
+    // Presets 
     List<EnviroWeatherPreset> presets;
     EnviroWeatherPreset ClearSkyPreset;
     EnviroWeatherPreset HeavyRainPreset;
     private string CLEAR_SKY = "Clear Sky";
     private string HEAVY_RAIN = "Heavy Rain";
     private string CurrentPreset;
-    private int numberPastThreshold = 0;
+
+    // Rocking Detection Variables 
     private float timeFrame = 5;
     private int windowIncrement = 0;
+    private float Threshold = 200;
+    private float rockingPitchThreshold = 50;
+
     private float previousAcceleration = 0;
     private float currentAcceleration = 0;
     private float maxAcceleration = 0;
-    private float Threshold = 50;
+    private int numberPastThreshold = 0;
+
+    // Pitch Rocking 
+    private float previousPitchAcceleration = 0;
+    private float maxPitchAcceleration = 0;
+    private int numberPastThresholdPitch = 0;
+
+    // Row Rocking 
+    private float previousRowAcceleration = 0;
+    private float maxRowAcceleration = 0;
+    private int numberPastThresholdRow = 0;
+    
+    // Time Variables 
     private float maxHeadingAcc = 0;
     private bool prevTimeDir = true; 
 
-    
+    // Serial Info
     private SerialPort stream;
     private Thread thread;
     private Queue outputQueue;    // From Unity to Arduino
     private Queue inputQueue;    // From Arduino to Unity
     private int baudRate = 9600;
-    // WINDOWS change to COM4 
-    private string portName = "/dev/tty.usbmodem14401";
+    private string portName = "/dev/tty.usbmodem14401";     // WINDOWS change to COM4 
     private int timeout = 100;
     private bool loop = true;
+
+    void Start()
+    {
+         StartThread();
+        CurrentPreset = CLEAR_SKY;
+        // Get a list of serial port names
+        string[] ports = SerialPort.GetPortNames();
+ 
+        // Display each port name to the console
+        // foreach (string port in ports) {
+        //     Debug.Log(port);
+        // }
+
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+        var currentWindow = Mathf.Floor(Time.realtimeSinceStartup / timeFrame);
+        string input = ReadFromArduino();
+
+        parseInput(input);
+        SendToArduino("ready");
+        changeTime();
+        checkForNewPresets();
+
+        detectRocking(  ref previousAcceleration, 
+                        ref currentAcceleration, 
+                        ref maxAcceleration, 
+                        ref numberPastThreshold);
+
+        detectRocking(  ref previousPitchAcceleration, 
+                        ref AccX, 
+                        ref maxPitchAcceleration, 
+                        ref numberPastThresholdPitch);
+
+        detectRocking(  ref previousRowAcceleration, 
+                        ref AccZ, 
+                        ref maxRowAcceleration, 
+                        ref numberPastThresholdRow);
+
+        if(currentWindow > windowIncrement) {
+            changeWeather();
+            checkForRocking();
+            numberPastThreshold = 0;  
+            numberPastThresholdPitch = 0;  
+            numberPastThresholdRow = 0;     
+        }
+    }
+
+    void checkForRocking() {
+        if(numberPastThresholdPitch > rockingPitchThreshold && numberPastThresholdRow < rockingPitchThreshold) {
+            Debug.Log("Bottle Rocking: Pitch");
+        }
+        if(numberPastThresholdRow > rockingPitchThreshold && numberPastThresholdPitch < rockingPitchThreshold) {
+            Debug.Log("Bottle Rocking: Row");
+        }
+    }
+
+    /*******************************************************************************
+     *
+     *                 Thread Safe Serial Communication API
+     *
+     ******************************************************************************/
+
+    void SendToArduino(string command)
+    {
+        outputQueue.Enqueue(command);
+
+    }
+
+    string ReadFromArduino()
+    {
+        if (inputQueue.Count == 0)
+        {
+            return null;
+        }
+
+        return (string)inputQueue.Dequeue();
+    }
+
+    /*******************************************************************************
+     *
+     *                 HandShaking/ Serial Communication (w/ Arduino)
+     *
+     ******************************************************************************/
 
     void OnApplicationQuit()
     {
@@ -108,41 +208,7 @@ public class ChangeTimeMapped : MonoBehaviour
         }
     }
 
-
-/*
- *  For external use by the MonoScript
- */
-    void SendToArduino(string command)
-    {
-        outputQueue.Enqueue(command);
-
-    }
-
-    string ReadFromArduino()
-    {
-        if (inputQueue.Count == 0)
-        {
-            return null;
-        }
-
-        return (string)inputQueue.Dequeue();
-    }
-
-    void Start()
-    {
-         StartThread();
-        CurrentPreset = CLEAR_SKY;
-        // Get a list of serial port names
-        string[] ports = SerialPort.GetPortNames();
- 
-        // Display each port name to the console
-        // foreach (string port in ports) {
-        //     Debug.Log(port);
-        // }
-
-    }
-
-    void SendDataToSerialPort(string command)
+        void SendDataToSerialPort(string command)
     {
         if (stream.IsOpen)
         {
@@ -169,6 +235,12 @@ public class ChangeTimeMapped : MonoBehaviour
         }
     }
 
+    /*******************************************************************************
+     *
+     *                              Data Processing
+     *
+     ******************************************************************************/
+
     void parseInput(string input)
     {
         try
@@ -184,11 +256,12 @@ public class ChangeTimeMapped : MonoBehaviour
                 xInput = float.Parse(values[0]);
                 yInput = float.Parse(values[1]);
                 float z = float.Parse(values[2]);
+                
                 AccX = Mathf.Abs(float.Parse(values[3]));
                 AccZ = Mathf.Abs(float.Parse(values[4]));
                 AccY = float.Parse(values[5]);
                 currentAcceleration = AccX + AccZ;
-                Debug.Log("Y Acc: " + AccY.ToString());
+                //("Y Acc: " + AccY.ToString());
                 //Debug.Log("xInput " + currentAcceleration.ToString());
                 //Debug.Log("current Acceleration: " + currentAcceleration.ToString());
 
@@ -207,14 +280,40 @@ public class ChangeTimeMapped : MonoBehaviour
         }
         catch(Exception e)
         {
-            Debug.Log("Input: " + input);
+            //Debug.Log("Input: " + input);
         }
     }
 
+    void checkForNewPresets() {
+        presets = EnviroSkyMgr.instance.Weather.weatherPresets;  
+        if (presets.Count > 0 && ClearSkyPreset == null)
+        {
+            for (int i = 0; i < presets.Count; i++)
+            {
+                Debug.Log("name: " + presets[i].Name);
+
+                if (presets[i].Name == CLEAR_SKY)
+                {
+                    ClearSkyPreset = presets[i];
+                }
+                if (presets[i].Name == HEAVY_RAIN)
+                {
+                    HeavyRainPreset = presets[i];
+                }
+            }
+        }
+    }
+
+
+    /*******************************************************************************
+     *
+     *                              Environment Effects 
+     *
+     ******************************************************************************/
+
+
     void changeTime() 
     {
-
-
         float yAccAbs = Mathf.Abs(AccY);
         if(yAccAbs > maxHeadingAcc && yAccAbs > 100) {
             maxHeadingAcc = yAccAbs; 
@@ -244,83 +343,56 @@ public class ChangeTimeMapped : MonoBehaviour
     }
 
 
-    // Update is called once per frame
-    void Update()
-    {
-        string input = ReadFromArduino();
-        parseInput(input);
-        SendToArduino("ready");
-        changeTime();
-        changeWeather();
 
-    }
-
-    void changeWeather(){
-        var currentWindow = Mathf.Floor(Time.realtimeSinceStartup / timeFrame);
-        //Debug.Log("current window: " + currentWindow.ToString() + " : " + windowIncrement.ToString());
-       // Debug.Log(Time.realtimeSinceStartup.ToString());
-            
-        if(currentWindow > windowIncrement)
+    void detectRocking(ref float prevAcc, ref float currentAcc, ref float maxAcc, ref int numRocks) {
+        if(currentAcc > prevAcc)
         {
-            windowIncrement += 1;
-            // use Number past Threshold to change the weather and wave height. 
-            if(numberPastThreshold > 4)
-            {
-                EnviroSkyMgr.instance.ChangeWeather(HeavyRainPreset);
-            }
-            else if(numberPastThreshold > 3 && numberPastThreshold <= 4) {
-                //Cloudy or something
-                EnviroSkyMgr.instance.ChangeWeather(HeavyRainPreset);
-            }
-            else if(numberPastThreshold <=3 && numberPastThreshold > 0) {
-                EnviroSkyMgr.instance.ChangeWeather(HeavyRainPreset);
-                //something else
-            }
-            else if(numberPastThreshold == 0) {
-                EnviroSkyMgr.instance.ChangeWeather(ClearSkyPreset);
-            }
-            //Debug.Log("Reseting. " + windowIncrement.ToString() + ", numberPastTH: " + numberPastThreshold.ToString());
-            numberPastThreshold = 0; 
-        }
-        if(currentAcceleration > previousAcceleration)
-        {
-            maxAcceleration = currentAcceleration;
+            maxAcc = currentAcc;
         }
         else
         {
-            if(maxAcceleration != 0)
+            if(maxAcc != 0)
             {
-                if (maxAcceleration > Threshold)
+                if (maxAcc > Threshold)
                 {
-                    //Debug.Log("Past Threshold: " + numberPastThreshold.ToString());
-                    numberPastThreshold += 1;
+                    numRocks += 1;
                 }
             }
             else
             {
-                maxAcceleration = 0; 
+                maxAcc = 0; 
             }
 
         }
-        previousAcceleration = currentAcceleration;
-        presets = EnviroSkyMgr.instance.Weather.weatherPresets;       
+        prevAcc = currentAcc;  
+    }
+
+    void changeWeather(){
         
-        if (presets.Count > 0 && ClearSkyPreset == null)
+        //Debug.Log("current window: " + currentWindow.ToString() + " : " + windowIncrement.ToString());
+       // Debug.Log(Time.realtimeSinceStartup.ToString());
+            
+        windowIncrement += 1;
+        // use Number past Threshold to change the weather and wave height. 
+        if(numberPastThreshold > 4)
         {
-            for (int i = 0; i < presets.Count; i++)
-            {
-                Debug.Log("name: " + presets[i].Name);
-
-                if (presets[i].Name == CLEAR_SKY)
-                {
-                    ClearSkyPreset = presets[i];
-                }
-                if (presets[i].Name == HEAVY_RAIN)
-                {
-                    HeavyRainPreset = presets[i];
-                }
-            }
+            EnviroSkyMgr.instance.ChangeWeather(HeavyRainPreset);
         }
+        else if(numberPastThreshold > 3 && numberPastThreshold <= 4) {
+            //Cloudy or something
+            EnviroSkyMgr.instance.ChangeWeather(HeavyRainPreset);
+        }
+        else if(numberPastThreshold <=3 && numberPastThreshold > 0) {
+            EnviroSkyMgr.instance.ChangeWeather(HeavyRainPreset);
+            //something else
+        }
+        else if(numberPastThreshold == 0) {
+            EnviroSkyMgr.instance.ChangeWeather(ClearSkyPreset);
+        }
+        // Debug.Log("Reseting. " + windowIncrement.ToString() + ", numberPastTH: " + numberPastThreshold.ToString());
+        // Debug.Log("numberPastTH Pitch: " + numberPastThresholdPitch.ToString());
+        // Debug.Log("numberPastTH Row: " + numberPastThresholdRow.ToString());
+ 
     }
 }
 
