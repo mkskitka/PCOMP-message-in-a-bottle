@@ -43,15 +43,19 @@ public class ChangeTimeMapped : MonoBehaviour
     List<EnviroWeatherPreset> presets;
     EnviroWeatherPreset ClearSkyPreset;
     EnviroWeatherPreset HeavyRainPreset;
+    EnviroWeatherPreset CloudyPreset;
+    EnviroWeatherPreset HeavySnowPreset;
     private string CLEAR_SKY = "Clear Sky";
     private string HEAVY_RAIN = "Heavy Rain";
+    private string CLOUDY = "Cloudy";
+    private string HEAVY_SNOW = "Heavy Snow";
     private string CurrentPreset;
 
     // Rocking Detection Variables 
     private float timeFrame = 5;
     private int windowIncrement = 0;
-    private float Threshold = 200;
-    private float rockingPitchThreshold = 50;
+    private float Threshold = 100;
+    private float rockingPitchThreshold = 30;
 
     private float previousAcceleration = 0;
     private float currentAcceleration = 0;
@@ -78,13 +82,13 @@ public class ChangeTimeMapped : MonoBehaviour
     private Queue outputQueue;    // From Unity to Arduino
     private Queue inputQueue;    // From Arduino to Unity
     private int baudRate = 9600;
-    private string portName = "/dev/tty.usbmodem14401";     // WINDOWS change to COM4 
+    private string portName = "/dev/tty.usbmodem14101";     // WINDOWS change to COM4 
     private int timeout = 100;
     private bool loop = true;
 
-    private bool flippingBottle = false; 
+    public static bool flippingBottle = false; 
     private bool flippingCamera = false; 
-    private bool inUpsidedown = false; 
+    public static bool inUpsidedown = false; 
 
     void Start()
     {
@@ -136,9 +140,8 @@ public class ChangeTimeMapped : MonoBehaviour
             numberPastThresholdRow = 0;     
         }
         if(flippingBottle) {
-            flippingBottle = bottle.Flip(!inUpsidedown);  
+            flippingBottle = bottle.Flip(inUpsidedown);  
             if(!flippingBottle && !flippingCamera) {
-                inUpsidedown = !inUpsidedown;
                 if(!inUpsidedown) {
                     bottle.PlayAnimation(); 
                     camera.PlayAnimation();
@@ -147,9 +150,8 @@ public class ChangeTimeMapped : MonoBehaviour
             }
         }
         if(flippingCamera) {
-            flippingCamera = camera.Flip(!inUpsidedown);
+            flippingCamera = camera.Flip(inUpsidedown);
             if(!flippingCamera && !flippingBottle) {
-                inUpsidedown = !inUpsidedown;
                 if(!inUpsidedown) {
                     bottle.PlayAnimation(); 
                     camera.PlayAnimation();
@@ -169,6 +171,7 @@ public class ChangeTimeMapped : MonoBehaviour
             camera.StopAnimation();
             flippingBottle = true; 
             flippingCamera = true;
+            inUpsidedown = !inUpsidedown;
             Debug.Log("Bottle Rocking: Pitch");
         }
         if(numberPastThresholdRow > rockingPitchThreshold 
@@ -180,6 +183,7 @@ public class ChangeTimeMapped : MonoBehaviour
             camera.StopAnimation();
             flippingBottle = true; 
             flippingCamera = true;
+            inUpsidedown = !inUpsidedown;
             Debug.Log("Bottle Rocking: Row");
         }
     }
@@ -344,6 +348,14 @@ public class ChangeTimeMapped : MonoBehaviour
                 {
                     ClearSkyPreset = presets[i];
                 }
+                if (presets[i].Name == HEAVY_SNOW)
+                {
+                    HeavySnowPreset = presets[i];
+                }
+                if (presets[i].Name == CLOUDY)
+                {
+                    CloudyPreset = presets[i];
+                }
                 if (presets[i].Name == HEAVY_RAIN)
                 {
                     HeavyRainPreset = presets[i];
@@ -419,27 +431,32 @@ public class ChangeTimeMapped : MonoBehaviour
         
         //Debug.Log("current window: " + currentWindow.ToString() + " : " + windowIncrement.ToString());
        // Debug.Log(Time.realtimeSinceStartup.ToString());
+       GameObject ocean = GameObject.FindGameObjectWithTag("ocean");
             
         windowIncrement += 1;
         // use Number past Threshold to change the weather and wave height. 
-        if(numberPastThreshold > 4)
-        {
-            EnviroSkyMgr.instance.ChangeWeather(HeavyRainPreset);
-        }
-        else if(numberPastThreshold > 3 && numberPastThreshold <= 4) {
+        // if(numberPastThreshold > 200)
+        // {
+        //     EnviroSkyMgr.instance.ChangeWeather(HeavySnowPreset);
+        //     ocean.GetComponent<Renderer>().sharedMaterial.SetFloat("_WaveSpeed", 3f);
+        // }
+        if(numberPastThreshold > 100) {
             //Cloudy or something
             EnviroSkyMgr.instance.ChangeWeather(HeavyRainPreset);
+            ocean.GetComponent<Renderer>().sharedMaterial.SetFloat("_WaveSpeed", 2f);
         }
-        else if(numberPastThreshold <=3 && numberPastThreshold > 0) {
-            EnviroSkyMgr.instance.ChangeWeather(HeavyRainPreset);
+        else if(numberPastThreshold <=100 && numberPastThreshold > 50) {
+            EnviroSkyMgr.instance.ChangeWeather(CloudyPreset);
+            ocean.GetComponent<Renderer>().sharedMaterial.SetFloat("_WaveSpeed", 1.5f);
             //something else
         }
         else if(numberPastThreshold == 0) {
             EnviroSkyMgr.instance.ChangeWeather(ClearSkyPreset);
+            ocean.GetComponent<Renderer>().sharedMaterial.SetFloat("_WaveSpeed", 1f);
         }
-        // Debug.Log("Reseting. " + windowIncrement.ToString() + ", numberPastTH: " + numberPastThreshold.ToString());
-        // Debug.Log("numberPastTH Pitch: " + numberPastThresholdPitch.ToString());
-        // Debug.Log("numberPastTH Row: " + numberPastThresholdRow.ToString());
+        Debug.Log("Reseting. " + windowIncrement.ToString() + ", numberPastTH: " + numberPastThreshold.ToString());
+        Debug.Log("numberPastTH Pitch: " + numberPastThresholdPitch.ToString());
+        Debug.Log("numberPastTH Row: " + numberPastThresholdRow.ToString());
  
     }
 }
