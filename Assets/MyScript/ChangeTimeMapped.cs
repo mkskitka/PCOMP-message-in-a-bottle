@@ -3,11 +3,14 @@
 using System.Collections;
 //using System.Diagnostics;
 using System.Collections.Generic;
+using System.ComponentModel;
 using UnityEngine;
 using System.IO.Ports;
 using System;
 using UnityEngine;
 using System.Threading;
+using StylizedWater2;
+using System.Reflection;
 [RequireComponent(typeof(FlipBottle))]
 [RequireComponent(typeof(CameraPan))]
 
@@ -55,7 +58,7 @@ public class ChangeTimeMapped : MonoBehaviour
     private float timeFrame = 5;
     private int windowIncrement = 0;
     private float Threshold = 100;
-    private float rockingPitchThreshold = 30;
+    private float rockingPitchThreshold = 50;
 
     private float previousAcceleration = 0;
     private float currentAcceleration = 0;
@@ -82,17 +85,60 @@ public class ChangeTimeMapped : MonoBehaviour
     private Queue outputQueue;    // From Unity to Arduino
     private Queue inputQueue;    // From Arduino to Unity
     private int baudRate = 9600;
-    private string portName = "/dev/tty.usbmodem14101";     // WINDOWS change to COM4 
+    private string portName = "/dev/tty.usbmodem14301";     // WINDOWS change to COM4 
     private int timeout = 100;
     private bool loop = true;
+    private GameObject ocean; 
 
     public static bool flippingBottle = false; 
     private bool flippingCamera = false; 
     public static bool inUpsidedown = false; 
+    private Material material;
 
     void Start()
     {
          StartThread();
+        ocean = GameObject.FindGameObjectWithTag("ocean");
+        WaterObject water = WaterObject.Find(transform.position, false);
+        material = ocean.GetComponent<Renderer>().sharedMaterial;
+        material.SetColor("_BaseColor", Color.black);
+        material.SetFloatArray("_WaveHeight", new float[] { 1f,2f});
+        //material.SetFloat("_Waven", 0f);
+        // foreach(var key in material.shaderKeywords) {
+        //     Debug.Log(key);
+        // }
+        // Shader oceanShader = material.shader;
+
+        // Type type = water.GetType();
+        // PropertyInfo[] props = type.GetProperties();
+        // string str = "{";
+        // foreach (var prop in props)
+        // {
+        // str+= prop.Name+",";
+        // }
+        // Debug.Log(str);
+        // Debug.Log(oceanShader);
+        // foreach(PropertyDescriptor descriptor in TypeDescriptor.GetProperties(oceanShader))
+        // {
+        //     string name = descriptor.Name;
+        //     object value = descriptor.GetValue(oceanShader);
+        //     Console.WriteLine("{0}={1}", name, value);
+        // }
+        // {shader:Universal Render Pipeline/FX/Stylized Water 2 (UnityEngine.Shader),
+        // color:RGBA(0.000, 0.000, 0.000, 0.000),
+        // mainTexture:,
+        // mainTextureOffset:(0.0, 0.0),
+        // mainTextureScale:(1.0, 1.0),
+        // renderQueue:2000,
+        // globalIlluminationFlags:None,
+        // doubleSidedGI:False,
+        // enableInstancing:True,
+        // passCount:1,
+        // shaderKeywords:System.String[],
+        // name:StylizedWater2_Ocean,
+        // hideFlags:None
+        // }
+
         CurrentPreset = CLEAR_SKY;
         // Get a list of serial port names
         string[] ports = SerialPort.GetPortNames();
@@ -133,11 +179,15 @@ public class ChangeTimeMapped : MonoBehaviour
                         ref numberPastThresholdRow);
 
         if(currentWindow > windowIncrement) {
+            Debug.Log("changing ocean color.");
+            //Debug.Log(ocean.GetComponent<Renderer>().sharedMaterial._BaseColor.ToString());
             changeWeather();
             checkForRocking();
             numberPastThreshold = 0;  
             numberPastThresholdPitch = 0;  
-            numberPastThresholdRow = 0;     
+            numberPastThresholdRow = 0; 
+            Debug.Log(windowIncrement.ToString());
+            material.SetFloatArray("_WaveHeight", new float[] { (float)windowIncrement,(float)windowIncrement} );    
         }
         if(flippingBottle) {
             flippingBottle = bottle.Flip(inUpsidedown);  
@@ -162,6 +212,35 @@ public class ChangeTimeMapped : MonoBehaviour
     }
 
     void checkForRocking() {
+        Debug.Log("number past threshold: " + numberPastThresholdPitch.ToString());
+        if(numberPastThreshold < 10) {
+            Debug.Log("wave speed - .5");
+            ocean.GetComponent<Renderer>().sharedMaterial.SetColor("_BaseColor", Color.black);
+            ocean.GetComponent<Renderer>().sharedMaterial.SetFloat("_WaveSpeed", .5f);
+            //material.SetFloatArray("_WaveHeight", new float[] { 1f,2f});
+        }
+        if(numberPastThreshold > 10 && numberPastThreshold <= 20 ) {
+            Debug.Log("wave speed - 1.5");
+            ocean.GetComponent<Renderer>().sharedMaterial.SetFloat("_WaveSpeed", 1.5f);
+            //material.SetFloatArray("_WaveHeight", new float[] { 1f,4f});
+        }
+        if(numberPastThreshold > 20 && numberPastThreshold <= 30 ) {
+            Debug.Log("wave speed - 2");
+            ocean.GetComponent<Renderer>().sharedMaterial.SetFloat("_WaveSpeed", 2.0f);
+            //material.SetFloatArray("_WaveHeight", new float[] { 1f,5f});
+        }
+        if(numberPastThreshold > 30 && numberPastThreshold <= 40 ) {
+            Debug.Log("wave speed - 3");
+            ocean.GetComponent<Renderer>().sharedMaterial.SetFloat("_WaveSpeed", 3.0f);
+            //material.SetFloatArray("_WaveHeight", new float[] { 1f,6f});
+        }
+        if(numberPastThreshold > 40 && numberPastThreshold <= 50 ) {
+            Debug.Log("wave speed - 5");
+            ocean.GetComponent<Renderer>().sharedMaterial.SetFloat("_WaveSpeed", 5.0f);
+            //material.SetFloatArray("_WaveHeight", new float[] { 1f,7f});
+        }
+
+
         if(numberPastThresholdPitch > rockingPitchThreshold 
             && numberPastThresholdRow < rockingPitchThreshold 
             && !flippingBottle 
@@ -431,7 +510,7 @@ public class ChangeTimeMapped : MonoBehaviour
         
         //Debug.Log("current window: " + currentWindow.ToString() + " : " + windowIncrement.ToString());
        // Debug.Log(Time.realtimeSinceStartup.ToString());
-       GameObject ocean = GameObject.FindGameObjectWithTag("ocean");
+
             
         windowIncrement += 1;
         // use Number past Threshold to change the weather and wave height. 
@@ -443,20 +522,20 @@ public class ChangeTimeMapped : MonoBehaviour
         if(numberPastThreshold > 100) {
             //Cloudy or something
             EnviroSkyMgr.instance.ChangeWeather(HeavyRainPreset);
-            ocean.GetComponent<Renderer>().sharedMaterial.SetFloat("_WaveSpeed", 2f);
+            //ocean.GetComponent<Renderer>().sharedMaterial.SetFloat("_WaveSpeed", 2f);
         }
         else if(numberPastThreshold <=100 && numberPastThreshold > 50) {
             EnviroSkyMgr.instance.ChangeWeather(CloudyPreset);
-            ocean.GetComponent<Renderer>().sharedMaterial.SetFloat("_WaveSpeed", 1.5f);
+            //ocean.GetComponent<Renderer>().sharedMaterial.SetFloat("_WaveSpeed", 1.5f);
             //something else
         }
         else if(numberPastThreshold == 0) {
             EnviroSkyMgr.instance.ChangeWeather(ClearSkyPreset);
             ocean.GetComponent<Renderer>().sharedMaterial.SetFloat("_WaveSpeed", 1f);
         }
-        Debug.Log("Reseting. " + windowIncrement.ToString() + ", numberPastTH: " + numberPastThreshold.ToString());
-        Debug.Log("numberPastTH Pitch: " + numberPastThresholdPitch.ToString());
-        Debug.Log("numberPastTH Row: " + numberPastThresholdRow.ToString());
+        // Debug.Log("Reseting. " + windowIncrement.ToString() + ", numberPastTH: " + numberPastThreshold.ToString());
+        // Debug.Log("numberPastTH Pitch: " + numberPastThresholdPitch.ToString());
+        // Debug.Log("numberPastTH Row: " + numberPastThresholdRow.ToString());
  
     }
 }

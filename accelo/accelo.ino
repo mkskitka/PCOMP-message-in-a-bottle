@@ -5,15 +5,18 @@
 Madgwick filter;
 // sensor's sample rate is fixed at 104 Hz:
 const float sensorRate = 104.00;
-
+ 
 // values for orientation:
 float roll = 0.0;
 float pitch = 0.0;
 float heading = 0.0;
-int frame = 0;
-int increment = 10;
+float lastQuery = 0;
 
-void setup() {
+
+void  setup() {
+// start the filter to run at the sample rate:
+filter.begin(sensorRate);
+
   Serial.begin(9600);
   Serial.flush();
   // attempt to start the IMU:
@@ -23,54 +26,47 @@ void setup() {
     while (true);
   }
 
-
-  // start the filter to run at the sample rate:
-  filter.begin(sensorRate);
-}
-
+  }
 void loop() {
-  frame = (frame + 1) % increment;
   // values for acceleration and rotation:
   float xAcc, yAcc, zAcc;
   float xGyro, yGyro, zGyro;
-
+// Serial.println("test");
   // check if the IMU is ready to read:
-  if (IMU.accelerationAvailable() &&
-      IMU.gyroscopeAvailable()) {
+
+  if (IMU.accelerationAvailable() && IMU.gyroscopeAvailable()) {
     // read accelerometer and gyrometer:
     IMU.readAcceleration(xAcc, yAcc, zAcc);
     IMU.readGyroscope(xGyro, yGyro, zGyro);
-
+ 
     // update the filter, which computes orientation:
     filter.updateIMU(xGyro, yGyro, zGyro, xAcc, yAcc, zAcc);
-
+ 
     // print the heading, pitch and roll
     roll = filter.getRoll();
     pitch = filter.getPitch();
     heading = filter.getYaw();
-
-
-    // if you get a byte in the serial port,
-    // send the latest heading, pitch, and roll:
-
   }
-  if (Serial.available()) {
-    char input = Serial.read();
-
-    //print the filter's results:
-
-      Serial.print(roll);
-      Serial.print(",");
-      Serial.print(pitch);
-      Serial.print(",");
-      Serial.print(heading);
-      Serial.print(",");
-      Serial.print(xGyro);
-      Serial.print(",");
-      // up down exceleration 
-      Serial.print(yGyro);
-      Serial.print(",");
-      //rotate on table around center acc
-      Serial.println(zGyro);
-  }
+ 
+  // if you get a byte in the serial port,
+  // send the latest heading, pitch, and roll:
+//  if (Serial.available()) {
+//    char input = Serial.read();
+//    Serial.print(heading);
+//    Serial.print(",");
+//    Serial.print(pitch);
+//    Serial.print(",");
+//    if(millis() - lastQuery > 100) {
+//      lastQuery = millis();
+//
+//      Serial.println(xAcc);
+//    }
+//    if(xAcc > 0.0) {
+//      lastQuery = millis();
+//
+//      Serial.println(xAcc);
+//    }
+    Serial.println(roll);
+   
+//  }
 }
